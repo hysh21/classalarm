@@ -56,13 +56,6 @@ def df_hash(df: Optional[pd.DataFrame]) -> str:
     return hashlib.md5(normalized.encode("utf-8")).hexdigest()
 
 
-def get_b2_value(df: pd.DataFrame) -> str:
-    """구글 시트 CSV에서 B2 셀 값 반환 (2행 2열 = iloc[0, 1])."""
-    if df is None or df.empty or len(df.columns) < 2:
-        return ""
-    return str(df.iloc[0, 1]).strip()
-
-
 def render_board(df: Optional[pd.DataFrame]):
     """전광판 스타일로 데이터 렌더링."""
     if df is None or df.empty:
@@ -193,9 +186,6 @@ def main():
         st.session_state.last_hash = ""
     if "last_update_ts" not in st.session_state:
         st.session_state.last_update_ts = 0.0
-    if "last_b2" not in st.session_state:
-        st.session_state.last_b2 = ""
-
     placeholder = st.empty()
 
     # 자동 새로고침 (30초마다 한 번씩 페이지 리런)
@@ -219,21 +209,17 @@ def main():
 
     current_hash = df_hash(df)
     changed = current_hash != st.session_state.last_hash
-    current_b2 = get_b2_value(df)
 
-    # 화면: 내용이 바뀌었을 때만 전광판 갱신
+    # 화면 갱신
     if changed:
         st.session_state.last_hash = current_hash
         st.session_state.last_update_ts = time.time()
     with placeholder:
         render_board(df)
 
-    # B2가 '1'이 될 때만 ding.wav 재생 (이전 값이 '1'이 아니었다가 '1'이 된 순간에만)
-    if current_b2 == "1" and st.session_state.last_b2 != "1":
+    # 시트 내용이 조금이라도 바뀌면 소리 1회 재생 (같은 내용이면 재생 안 함)
+    if changed:
         play_sound("ding.wav")
-        st.session_state.last_b2 = "1"
-    else:
-        st.session_state.last_b2 = current_b2
 
     # 브라우저 자동 재생 정책 안내 (아주 작은 글씨로 하단에 표시)
     st.markdown(
