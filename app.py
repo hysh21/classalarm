@@ -1,7 +1,9 @@
 import base64
 import time
 import hashlib
+from datetime import datetime
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
@@ -194,7 +196,14 @@ def main():
         "d/1dffblmQyM895-ONRKOnwArHwO4T17RHHtKyEoMh4ccI/export?format=csv"
     )
 
-    refresh_interval = 15  # 초
+    # KST 기준: 오전 7시~오후 4시는 15초, 그 외(오후 5시~다음날 오전 6시 59분)는 3시간 주기
+    kst = ZoneInfo("Asia/Seoul")
+    now_kst = datetime.now(kst)
+    hour = now_kst.hour
+    if 7 <= hour < 17:
+        refresh_interval = 15  # 초 (활동 시간)
+    else:
+        refresh_interval = 10800  # 3시간 = 10800초 (비활동 시간, 리소스 절약)
 
     # 세션 상태 초기화
     if "last_hash" not in st.session_state:
@@ -210,7 +219,7 @@ def main():
 
     placeholder = st.empty()
 
-    # 자동 새로고침 (30초마다 한 번씩 페이지 리런)
+    # 자동 새로고침 (KST에 따라 15초 또는 3시간 주기)
     # 최신 버전에서는 st.experimental_rerun 대신 st.rerun 사용
     st_autorefresh = st.rerun  # 타입 힌트용 더미
     from streamlit_autorefresh import st_autorefresh  # type: ignore
