@@ -26,31 +26,47 @@ def load_ding_base64() -> str:
 def render_sound_component(trigger: str, ding_b64: str = "") -> None:
     """
     st.components.v1.html로 오디오 컴포넌트 주입.
-    trigger가 설정되고 localStorage에 오디오 해제된 상태일 때만 1회 재생. 중복 재생 방지.
-    ding_b64가 비어 있으면 로드 시도 후 재시도하지 않음(경로 예외 처리됨).
+    new Audio()로 재생, audioUnlocked 체크, 콘솔 로그로 디버깅 가능.
     """
     b64 = ding_b64 or load_ding_base64()
     if not b64:
         return
     trigger_esc = trigger.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"')
     html = f"""
-    <audio id="dingAudio" preload="auto">
+    <audio id="dingAudio" preload="auto" style="display:none">
         <source src="data:audio/wav;base64,{b64}" type="audio/wav">
     </audio>
     <script>
     (function() {{
-        var audio = document.getElementById("dingAudio");
         var trigger = "{trigger_esc}";
-        if (trigger) {{
-            try {{
-                if (localStorage.getItem("audioUnlocked") === "1") {{
-                    var last = localStorage.getItem("lastPlayedSoundTrigger") || "";
-                    if (last !== trigger) {{
-                        localStorage.setItem("lastPlayedSoundTrigger", trigger);
-                        audio.play().catch(function() {{}});
-                    }}
-                }}
-            }} catch (e) {{}}
+        var unlocked = localStorage.getItem("audioUnlocked") === "1";
+        console.log("[ding] audioUnlocked:", unlocked, "trigger:", trigger || "(없음)");
+        if (!trigger) return;
+        try {{
+            if (!unlocked) {{
+                console.log("[ding] 재생 안 함: 화면을 한 번 클릭한 뒤 다시 시도하세요.");
+                return;
+            }}
+            var last = localStorage.getItem("lastPlayedSoundTrigger") || "";
+            if (last === trigger) {{
+                console.log("[ding] 재생 안 함: 이미 재생한 trigger (중복 방지)");
+                return;
+            }}
+            var el = document.getElementById("dingAudio");
+            var dataUrl = el && el.querySelector("source") ? el.querySelector("source").src : "";
+            if (!dataUrl) {{
+                console.log("[ding] 재생 안 함: 오디오 URL 없음");
+                return;
+            }}
+            localStorage.setItem("lastPlayedSoundTrigger", trigger);
+            var audio = new Audio(dataUrl);
+            audio.play().then(function() {{
+                console.log("[ding] 재생 성공, trigger:", trigger);
+            }}).catch(function(e) {{
+                console.log("[ding] 재생 실패", e);
+            }});
+        }} catch (e) {{
+            console.log("[ding] 오류", e);
         }}
     }})();
     </script>
@@ -277,6 +293,8 @@ def main():
         st.session_state.last_c2 = ""
     if "flash_start_time" not in st.session_state:
         st.session_state.flash_start_time = None  # 점멸 시작 시각 (float 또는 None)
+    if "flash_done" not in st.session_state:
+        st.session_state.flash_done = False  # 점멸 1회 끝나면 True, C2가 0이 되면 초기화
     if "sound_trigger" not in st.session_state:
         st.session_state.sound_trigger = ""  # B2가 1이 될 때만 설정, 소리 1회 재생용
     if "ding_b64" not in st.session_state:
@@ -310,18 +328,19 @@ def main():
     b2_is_one = current_b2 in ("1", "1.0")  # B2 소리: 시트에서 1 또는 1.0으로 올 수 있음
     c2_is_one = current_c2 in ("1", "1.0")  # C2 점멸: 시트에서 1 또는 1.0으로 올 수 있음
 
-    # C열이 1일 때 점멸 시작: 1로 바뀌는 순간 또는 flash_start_time이 None이면 즉시 시작
-    if c2_is_one:
-        if st.session_state.flash_start_time is None:
-            st.session_state.flash_start_time = time.time()
-    else:
+    # C열 점멸: 1회만 15초 실행. C2가 0이 되면 flash_done 초기화 후 다시 1이면 작동
+    if not c2_is_one:
         st.session_state.flash_start_time = None
+        st.session_state.flash_done = False  # C2가 0이 되면 초기화
+    elif not st.session_state.flash_done and st.session_state.flash_start_time is None:
+        st.session_state.flash_start_time = time.time()  # C2=1이고 아직 1회 안 했으면 시작
     st.session_state.last_c2 = current_c2
 
     flash_start = st.session_state.flash_start_time
     elapsed = (time.time() - flash_start) if flash_start else 999
     if flash_start is not None and elapsed > 15.0:
-        st.session_state.flash_start_time = None  # 15초 지나면 점멸 종료
+        st.session_state.flash_start_time = None
+        st.session_state.flash_done = True  # 15초 지나면 1회 종료, C2가 0 되기 전까지 재시작 안 함
     flash_on = c2_is_one and st.session_state.flash_start_time is not None
     flash_elapsed = min(elapsed, 15.0) if flash_on else 0.0
 
