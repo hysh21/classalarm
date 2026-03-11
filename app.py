@@ -136,7 +136,7 @@ def main():
             justify-content: center;
             align-items: center;
             text-align: center;
-            font-size: 15vw;
+            font-size: 10vw;
             font-weight: 700;
             line-height: 1.55;
             letter-spacing: 0.02em;
