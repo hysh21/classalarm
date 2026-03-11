@@ -307,11 +307,13 @@ def main():
     changed = current_hash != st.session_state.last_hash
     current_b2 = get_b2_value(df)
     current_c2 = get_c2_value(df)
+    c2_is_one = current_c2 in ("1", "1.0")  # 시트에서 1 또는 1.0으로 올 수 있음
 
-    # C열이 1로 바뀌는 순간을 감지해 점멸 시작 시각 기록. 30초 지나면 점멸 중단
-    if current_c2 == "1" and st.session_state.last_c2 != "1":
-        st.session_state.flash_start_time = time.time()
-    if current_c2 != "1":
+    # C열이 1일 때 점멸 시작: 1로 바뀌는 순간 또는 flash_start_time이 None이면 즉시 시작
+    if c2_is_one:
+        if st.session_state.flash_start_time is None:
+            st.session_state.flash_start_time = time.time()
+    else:
         st.session_state.flash_start_time = None
     st.session_state.last_c2 = current_c2
 
@@ -319,8 +321,11 @@ def main():
     elapsed = (time.time() - flash_start) if flash_start else 999
     if flash_start is not None and elapsed > 15.0:
         st.session_state.flash_start_time = None  # 15초 지나면 점멸 종료
-    flash_on = current_c2 == "1" and st.session_state.flash_start_time is not None
+    flash_on = c2_is_one and st.session_state.flash_start_time is not None
     flash_elapsed = min(elapsed, 15.0) if flash_on else 0.0
+
+    # (임시) 점멸 상태 디버그 출력
+    st.write(f"점멸 상태: {flash_on}, 경과 시간: {flash_elapsed}")
 
     # 화면: A열(내용)만 표시. 점멸 시 새로고침 후에도 이어지도록 flash_elapsed 반영
     if changed:
