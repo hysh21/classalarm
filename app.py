@@ -56,8 +56,15 @@ def df_hash(df: Optional[pd.DataFrame]) -> str:
     return hashlib.md5(normalized.encode("utf-8")).hexdigest()
 
 
+def get_b2_value(df: pd.DataFrame) -> str:
+    """구글 시트 CSV에서 B2 셀 값 반환 (2행 2열 = iloc[0, 1]). 소리 재생 여부 판단용."""
+    if df is None or df.empty or len(df.columns) < 2:
+        return ""
+    return str(df.iloc[0, 1]).strip()
+
+
 def render_board(df: Optional[pd.DataFrame]):
-    """전광판 스타일로 데이터 렌더링."""
+    """전광판: A열(공지 내용)만 크게 표시. B열은 화면에 노출하지 않음."""
     if df is None or df.empty:
         st.markdown(
             '<div class="board-text">표시할 데이터가 없습니다.</div>',
@@ -65,19 +72,9 @@ def render_board(df: Optional[pd.DataFrame]):
         )
         return
 
-    # 컬럼이 '내용' 또는 '메시지' 같은 이름일 수 있으므로 우선순위로 선택
-    preferred_cols = ["내용", "메시지", "공지", "title", "message"]
-    text_col = None
-    for c in preferred_cols:
-        if c in df.columns:
-            text_col = c
-            break
-
-    if text_col is None:
-        # 첫 번째 열 기준으로 전체를 큰 글자로 표시
-        lines = df.astype(str).agg(" | ".join, axis=1).tolist()
-    else:
-        lines = df[text_col].astype(str).tolist()
+    # A열(첫 번째 열)만 사용해 공지 내용 표시. B열은 사용하지 않음.
+    col_a = df.iloc[:, 0]
+    lines = col_a.astype(str).tolist()
 
     if not lines:
         st.markdown(
@@ -186,6 +183,9 @@ def main():
         st.session_state.last_hash = ""
     if "last_update_ts" not in st.session_state:
         st.session_state.last_update_ts = 0.0
+    if "last_b2" not in st.session_state:
+        st.session_state.last_b2 = ""
+
     placeholder = st.empty()
 
     # 자동 새로고침 (30초마다 한 번씩 페이지 리런)
@@ -209,17 +209,21 @@ def main():
 
     current_hash = df_hash(df)
     changed = current_hash != st.session_state.last_hash
+    current_b2 = get_b2_value(df)
 
-    # 화면 갱신
+    # 화면: A열(공지)만 표시, B열은 표시하지 않음
     if changed:
         st.session_state.last_hash = current_hash
         st.session_state.last_update_ts = time.time()
     with placeholder:
         render_board(df)
 
-    # 시트 내용이 조금이라도 바뀌면 소리 1회 재생 (같은 내용이면 재생 안 함)
-    if changed:
+    # B2가 '1'일 때만 소리 1회 재생. 재생 후에는 웹에서만 0으로 간주해 중복 재생 방지
+    if current_b2 == "1" and st.session_state.last_b2 != "1":
         play_sound("ding.wav")
+        st.session_state.last_b2 = "1"
+    else:
+        st.session_state.last_b2 = current_b2
 
     # 브라우저 자동 재생 정책 안내 (아주 작은 글씨로 하단에 표시)
     st.markdown(
