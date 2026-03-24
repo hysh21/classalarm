@@ -67,13 +67,13 @@ def fetch_sheet(url: str) -> pd.DataFrame:
     - 권장: 구글 시트에서 `웹에 게시` → CSV 링크 사용
     - 일반 편집 URL인 경우, CSV export 주소로 변환을 시도한다.
     """
-    sheet_url = url.strip()
+     = url.strip()
 
     # 일반 편집 URL을 CSV export URL로 변환 시도
-    if "/edit" in sheet_url and "export?format=csv" not in sheet_url:
+    if "/edit" in  and "export?format=csv" not in :
         # 예: https://docs.google.com/spreadsheets/d/FILE_ID/edit#gid=0
         #  → https://docs.google.com/spreadsheets/d/FILE_ID/export?format=csv&gid=0
-        base, _, tail = sheet_url.partition("/edit")
+        base, _, tail = .partition("/edit")
         gid = "0"
         if "gid=" in tail:
             # #gid=숫자 형식
@@ -81,9 +81,9 @@ def fetch_sheet(url: str) -> pd.DataFrame:
                 gid = tail.split("gid=")[1].split("&")[0]
             except Exception:
                 pass
-        sheet_url = f"{base}/export?format=csv&gid={gid}"
+         = f"{base}/export?format=csv&gid={gid}"
 
-    df = pd.read_csv(sheet_url)
+    df = pd.read_csv()
     return df
 
 
@@ -254,7 +254,7 @@ def main():
     st.title(" ")  # 실제 화면에서는 숨기고 CSS로만 구성
 
     # 고정된 구글 시트 CSV URL (앱 시작 시 자동 사용)
-    sheet_url = (https://docs.google.com/spreadsheets/d/1dp1G3dyQKyM-ko0HFsbYjCxJmrvWDF5YeGFqVdVuXjk/edit?usp=sharing/export?format=csv
+    sheet_url = "https://docs.google.com/spreadsheets/d/1dp1G3dyQKyM-ko0HFsbYjCxJmrvWDF5YeGFqVdVuXjk/export?format=csv"
         "https://docs.google.com/spreadsheets/"
         "d/1dffblmQyM895-ONRKOnwArHwO4T17RHHtKyEoMh4ccI/export?format=csv"
     )
