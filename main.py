@@ -254,7 +254,7 @@ def main():
     st.title(" ")  # 실제 화면에서는 숨기고 CSS로만 구성
 
     # 고정된 구글 시트 CSV URL (앱 시작 시 자동 사용)
-    sheet_url = (
+    sheet_url = (https://docs.google.com/spreadsheets/d/1dp1G3dyQKyM-ko0HFsbYjCxJmrvWDF5YeGFqVdVuXjk/edit?usp=sharing/export?format=csv
         "https://docs.google.com/spreadsheets/"
         "d/1dffblmQyM895-ONRKOnwArHwO4T17RHHtKyEoMh4ccI/export?format=csv"
     )
