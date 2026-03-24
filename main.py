@@ -67,7 +67,7 @@ def fetch_sheet(url: str) -> pd.DataFrame:
     - 권장: 구글 시트에서 `웹에 게시` → CSV 링크 사용
     - 일반 편집 URL인 경우, CSV export 주소로 변환을 시도한다.
     """
-     = url.strip()
+     url = url.strip()
 
     # 일반 편집 URL을 CSV export URL로 변환 시도
     if "/edit" in  and "export?format=csv" not in :
