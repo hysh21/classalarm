@@ -67,7 +67,7 @@ def render_sound_component(trigger: str, ding_b64: str = "") -> None:
     }})();
     </script>
     """
-    components.html(html, height=56)
+    components.html(html, height=0)
 
 
 @st.cache_data(ttl=20)
@@ -80,10 +80,7 @@ def fetch_sheet(url: str) -> pd.DataFrame:
     """
     url = url.strip()
 
-    # 일반 편집 URL을 CSV export URL로 변환 시도
     if "/edit" in url and "export?format=csv" not in url:
-        # 예: https://docs.google.com/spreadsheets/d/FILE_ID/edit#gid=0
-        #  → https://docs.google.com/spreadsheets/d/FILE_ID/export?format=csv&gid=0
         base, _, tail = url.partition("/edit")
         gid = "0"
 
@@ -132,18 +129,17 @@ def render_board(
     """
     if df is None or df.empty:
         st.markdown(
-            '<div class="board-text">표시할 데이터가 없습니다.</div>',
+            '<div class="board-wrap"><div class="board-text">표시할 데이터가 없습니다.</div></div>',
             unsafe_allow_html=True,
         )
         return
 
-    # A열(내용)만 사용. B(소리), C(점멸) 열은 사용하지 않음.
     col_a = df.iloc[:, 0]
     lines = col_a.astype(str).tolist()
 
     if not lines:
         st.markdown(
-            '<div class="board-text">표시할 데이터가 없습니다.</div>',
+            '<div class="board-wrap"><div class="board-text">표시할 데이터가 없습니다.</div></div>',
             unsafe_allow_html=True,
         )
         return
@@ -157,7 +153,7 @@ def render_board(
         delay_style = ""
 
     st.markdown(
-        f'<div class="{cls}"{delay_style}>{html_lines}</div>',
+        f'<div class="board-wrap"><div class="{cls}"{delay_style}>{html_lines}</div></div>',
         unsafe_allow_html=True,
     )
 
@@ -172,33 +168,86 @@ def main() -> None:
     st.markdown(
         """
         <style>
-        .stApp, .main .block-container, section.main {
-            background-color: #000000;
-            color: #ffffff;
+        html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #000000 !important;
+            overflow: hidden !important;
+        }
+
+        body {
+            overscroll-behavior: none !important;
+        }
+
+        .stApp, section.main, .main {
+            background-color: #000000 !important;
+            color: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            max-width: 100% !important;
+        }
+
+        .block-container {
             padding: 0 !important;
             margin: 0 !important;
             max-width: 100% !important;
         }
 
-        .block-container {
-            padding-top: 0rem !important;
-            padding-bottom: 0rem !important;
-            padding-left: 0rem !important;
-            padding-right: 0rem !important;
-            max-width: 100% !important;
+        div[data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+
+        div[data-testid="stElementContainer"] {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        header[data-testid="stHeader"] {
+            display: none !important;
+            height: 0 !important;
+        }
+
+        [data-testid="stToolbar"] {
+            display: none !important;
+            height: 0 !important;
+        }
+
+        footer {
+            display: none !important;
+        }
+
+        #MainMenu {
+            visibility: hidden !important;
         }
 
         ::-webkit-scrollbar {
             width: 0px;
+            height: 0px;
             background: transparent;
         }
 
+        .board-wrap {
+            width: 100vw;
+            height: 100vh;
+            min-height: 100vh;
+            margin: 0 !important;
+            padding: 0 !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #000000;
+            overflow: hidden;
+        }
+
         .board-text {
-            width: 100%;
+            width: 100vw;
+            height: 100vh;
             min-height: 100vh;
             box-sizing: border-box;
-            margin: 0 auto;
-            padding: 0 1rem 14vh 1rem;
+            margin: 0 !important;
+            padding: 0 1rem 0 1rem;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -210,8 +259,8 @@ def main() -> None:
             letter-spacing: 0.02em;
             background-color: #000000;
             color: #ffff66;
-            font-family: "Pretendard", system-ui, -apple-system, BlinkMacSystemFont,
-                         "Segoe UI", sans-serif;
+            font-family: "Pretendard", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            overflow: hidden;
         }
 
         @keyframes board-flash {
@@ -224,14 +273,6 @@ def main() -> None:
             animation: board-flash 1s linear 15 forwards;
         }
 
-        header[data-testid="stHeader"] {
-            display: none;
-        }
-
-        footer {
-            visibility: hidden;
-        }
-
         .autoplay-hint {
             position: fixed;
             bottom: 4px;
@@ -240,6 +281,7 @@ def main() -> None:
             color: #666666;
             opacity: 0.7;
             z-index: 9999;
+            pointer-events: none;
         }
         </style>
         """,
@@ -260,12 +302,8 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    st.title(" ")
-
-    # 고정된 구글 시트 CSV URL
     sheet_url = "https://docs.google.com/spreadsheets/d/1dp1G3dyQKyM-ko0HFsbYjCxJmrvWDF5YeGFqVdVuXjk/export?format=csv"
 
-    # KST 기준: 오전 7시~오후 4시는 20초, 그 외는 3시간 주기
     kst = ZoneInfo("Asia/Seoul")
     now_kst = datetime.now(kst)
     hour = now_kst.hour
@@ -302,7 +340,7 @@ def main() -> None:
     except Exception:
         with placeholder:
             st.markdown(
-                '<div class="board-text">데이터를 불러오지 못했습니다.<br>잠시 후 자동으로 다시 시도합니다.</div>',
+                '<div class="board-wrap"><div class="board-text">데이터를 불러오지 못했습니다.<br>잠시 후 자동으로 다시 시도합니다.</div></div>',
                 unsafe_allow_html=True,
             )
         return
@@ -334,9 +372,6 @@ def main() -> None:
     flash_on = c2_is_one and st.session_state.flash_start_time is not None
     flash_elapsed = min(elapsed, 15.0) if flash_on else 0.0
 
-    # 필요 없으면 이 줄은 지워도 됨
-    st.write(f"점멸 상태: {flash_on}, 경과 시간: {flash_elapsed}")
-
     if changed:
         st.session_state.last_hash = current_hash
         st.session_state.last_update_ts = time.time()
@@ -358,7 +393,7 @@ def main() -> None:
     )
 
     st.markdown(
-        '<div class="autoplay-hint">※ 브라우저 정책 때문에 처음 접속 시 화면을 한 번 클릭해야 소리가 재생됩니다.</div>',
+        '<div class="autoplay-hint">※ 처음 한 번 화면을 클릭해야 소리가 재생될 수 있음</div>',
         unsafe_allow_html=True,
     )
 
