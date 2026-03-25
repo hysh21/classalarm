@@ -12,7 +12,6 @@ import streamlit.components.v1 as components
 
 
 def load_ding_base64() -> str:
-    """ding.wav를 앱 기준 경로에서 읽어 base64 문자열 반환. 실패 시 빈 문자열."""
     try:
         path = Path(__file__).resolve().parent / "ding.wav"
         if not path.is_file():
@@ -24,10 +23,6 @@ def load_ding_base64() -> str:
 
 
 def render_sound_component(trigger: str, ding_b64: str = "") -> None:
-    """
-    trigger 값이 바뀌면 소리를 재생.
-    브라우저 자동재생 제한으로 처음 1회 클릭이 필요할 수 있음.
-    """
     b64 = ding_b64 or load_ding_base64()
     if not b64:
         st.error("ding.wav를 불러올 수 없습니다. (파일 경로 확인)")
@@ -70,10 +65,6 @@ def render_sound_component(trigger: str, ding_b64: str = "") -> None:
 
 @st.cache_data(ttl=20)
 def fetch_sheet(url: str) -> pd.DataFrame:
-    """
-    구글 시트 URL에서 데이터를 읽어온다.
-    일반 편집 URL이면 CSV export 주소로 변환을 시도한다.
-    """
     url = url.strip()
 
     if "/edit" in url and "export?format=csv" not in url:
@@ -91,32 +82,31 @@ def fetch_sheet(url: str) -> pd.DataFrame:
     return pd.read_csv(url)
 
 
-def df_hash(df: Optional[pd.DataFrame]) -> str:
-    if df is None or df.empty:
-        return ""
-    normalized = df.sort_index(axis=1).to_json(date_format="iso", orient="split")
-    return hashlib.md5(normalized.encode("utf-8")).hexdigest()
-
-
 def get_b2_value(df: pd.DataFrame) -> str:
-    """B2 셀 값 (소리 여부)."""
     if df is None or df.empty or len(df.columns) < 2:
         return ""
     return str(df.iloc[0, 1]).strip()
 
 
 def get_c2_value(df: pd.DataFrame) -> str:
-    """C2 셀 값 (점멸 여부)."""
     if df is None or df.empty or len(df.columns) < 3:
         return ""
     return str(df.iloc[0, 2]).strip()
 
 
 def get_d2_value(df: pd.DataFrame) -> str:
-    """D2 셀 값 (재강조용 체크박스/트리거)."""
     if df is None or df.empty or len(df.columns) < 4:
         return ""
     return str(df.iloc[0, 3]).strip()
+
+
+def get_text_signature(df: Optional[pd.DataFrame]) -> str:
+    """A열 내용만 기준으로 변경 감지."""
+    if df is None or df.empty:
+        return ""
+    col_a = df.iloc[:, 0].astype(str).tolist()
+    joined = "\n".join(col_a)
+    return hashlib.md5(joined.encode("utf-8")).hexdigest()
 
 
 def render_board(
@@ -124,10 +114,6 @@ def render_board(
     flash: bool = False,
     flash_elapsed: float = 0.0,
 ) -> None:
-    """
-    전광판: A열(내용)만 표시. B/C/D열은 화면에 표시하지 않음.
-    flash=True일 때 animation-delay를 주어 새로고침 후에도 이어지게 함.
-    """
     if df is None or df.empty:
         st.markdown(
             '<div class="board-wrap"><div class="board-text">표시할 데이터가 없습니다.</div></div>',
@@ -309,16 +295,13 @@ def main() -> None:
     now_kst = datetime.now(kst)
     hour = now_kst.hour
 
-    # 앱 실행 주기
     if 7 <= hour < 17:
         refresh_interval = 5
     else:
         refresh_interval = 30
 
-    if "last_hash" not in st.session_state:
-        st.session_state.last_hash = ""
-    if "last_update_ts" not in st.session_state:
-        st.session_state.last_update_ts = 0.0
+    if "last_text_sig" not in st.session_state:
+        st.session_state.last_text_sig = ""
     if "last_d2" not in st.session_state:
         st.session_state.last_d2 = ""
     if "flash_start_time" not in st.session_state:
@@ -345,8 +328,8 @@ def main() -> None:
             )
         return
 
-    current_hash = df_hash(df)
-    changed = current_hash != st.session_state.last_hash
+    current_text_sig = get_text_signature(df)
+    text_changed = current_text_sig != st.session_state.last_text_sig
 
     current_b2 = get_b2_value(df)
     current_c2 = get_c2_value(df)
@@ -355,8 +338,10 @@ def main() -> None:
     b2_is_one = current_b2 in ("1", "1.0")
     c2_is_one = current_c2 in ("1", "1.0")
 
-    trigger_changed = current_d2 != st.session_state.last_d2
-    should_trigger = changed or trigger_changed
+    d2_is_checked = current_d2.upper() == "TRUE"
+    trigger_checked_now = d2_is_checked and (current_d2 != st.session_state.last_d2)
+
+    should_trigger = text_changed or trigger_checked_now
 
     if should_trigger and c2_is_one:
         st.session_state.flash_start_time = time.time()
@@ -378,9 +363,8 @@ def main() -> None:
     if should_trigger and b2_is_one:
         st.session_state.sound_trigger = str(time.time())
 
-    if changed:
-        st.session_state.last_hash = current_hash
-        st.session_state.last_update_ts = time.time()
+    if text_changed:
+        st.session_state.last_text_sig = current_text_sig
 
     st.session_state.last_d2 = current_d2
 
