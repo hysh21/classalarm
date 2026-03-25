@@ -25,8 +25,8 @@ def load_ding_base64() -> str:
 
 def render_sound_component(trigger: str, ding_b64: str = "") -> None:
     """
-    B2가 1이 되는 순간 무조건 new Audio().play() 실행.
-    localStorage 체크 없음. 재생 실패 시 화면에 에러 표시.
+    trigger 값이 바뀌면 new Audio().play() 실행.
+    브라우저 자동재생 제한으로 처음 1회 클릭이 필요할 수 있음.
     """
     b64 = ding_b64 or load_ding_base64()
     if not b64:
@@ -35,7 +35,6 @@ def render_sound_component(trigger: str, ding_b64: str = "") -> None:
 
     trigger_esc = trigger.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"')
     html = f"""
-    <div id="dingError" style="display:none; background:#ff4b4b; color:#fff; padding:8px 12px; border-radius:4px; font-size:14px; margin:4px 0;"></div>
     <audio id="dingAudio" preload="auto" style="display:none">
         <source src="data:audio/wav;base64,{b64}" type="audio/wav">
     </audio>
@@ -45,24 +44,12 @@ def render_sound_component(trigger: str, ding_b64: str = "") -> None:
         if (!trigger) return;
 
         var el = document.getElementById("dingAudio");
-        var errEl = document.getElementById("dingError");
         var dataUrl = el && el.querySelector("source") ? el.querySelector("source").src : "";
-
-        if (!dataUrl) {{
-            if (errEl) {{
-                errEl.textContent = "오디오 URL 없음";
-                errEl.style.display = "block";
-            }}
-            return;
-        }}
+        if (!dataUrl) return;
 
         var audio = new Audio(dataUrl);
-        audio.play().then(function() {{}}).catch(function(e) {{
-            var msg = (e && e.message) ? e.message : String(e);
-            if (errEl) {{
-                errEl.textContent = "소리 재생 실패: " + msg;
-                errEl.style.display = "block";
-            }}
+        audio.play().catch(function(e) {{
+            console.log("소리 재생 실패:", e);
         }});
     }})();
     </script>
@@ -74,9 +61,7 @@ def render_sound_component(trigger: str, ding_b64: str = "") -> None:
 def fetch_sheet(url: str) -> pd.DataFrame:
     """
     구글 시트 URL에서 데이터를 읽어온다.
-
-    - 권장: 구글 시트에서 `웹에 게시` → CSV 링크 사용
-    - 일반 편집 URL인 경우, CSV export 주소로 변환을 시도한다.
+    일반 편집 URL이면 CSV export 주소로 변환을 시도한다.
     """
     url = url.strip()
 
@@ -92,8 +77,7 @@ def fetch_sheet(url: str) -> pd.DataFrame:
 
         url = f"{base}/export?format=csv&gid={gid}"
 
-    df = pd.read_csv(url)
-    return df
+    return pd.read_csv(url)
 
 
 def df_hash(df: Optional[pd.DataFrame]) -> str:
@@ -104,17 +88,24 @@ def df_hash(df: Optional[pd.DataFrame]) -> str:
 
 
 def get_b2_value(df: pd.DataFrame) -> str:
-    """B2 셀 값 (소리 재생 판단용). 시트: A=내용, B=소리, C=점멸."""
+    """B2 셀 값 (소리 여부)."""
     if df is None or df.empty or len(df.columns) < 2:
         return ""
     return str(df.iloc[0, 1]).strip()
 
 
 def get_c2_value(df: pd.DataFrame) -> str:
-    """C2 셀 값 (점멸 여부 판단용)."""
+    """C2 셀 값 (점멸 여부)."""
     if df is None or df.empty or len(df.columns) < 3:
         return ""
     return str(df.iloc[0, 2]).strip()
+
+
+def get_d2_value(df: pd.DataFrame) -> str:
+    """D2 셀 값 (재강조용 체크박스/트리거)."""
+    if df is None or df.empty or len(df.columns) < 4:
+        return ""
+    return str(df.iloc[0, 3]).strip()
 
 
 def render_board(
@@ -123,9 +114,8 @@ def render_board(
     flash_elapsed: float = 0.0,
 ) -> None:
     """
-    전광판: A열(내용)만 표시. B·C열은 화면에 절대 표시하지 않음.
-    flash=True일 때 flash_elapsed(초)만큼 animation-delay를 주어
-    새로고침 후에도 애니메이션이 이어지도록 함.
+    전광판: A열(내용)만 표시. B/C/D열은 화면에 표시하지 않음.
+    flash=True일 때 animation-delay를 주어 새로고침 후에도 이어지게 함.
     """
     if df is None or df.empty:
         st.markdown(
@@ -308,10 +298,11 @@ def main() -> None:
     now_kst = datetime.now(kst)
     hour = now_kst.hour
 
+    # 실제 데이터 갱신은 20초 캐시 기준
     if 7 <= hour < 17:
-        refresh_interval = 20
+        refresh_interval = 5
     else:
-        refresh_interval = 10800
+        refresh_interval = 30
 
     if "last_hash" not in st.session_state:
         st.session_state.last_hash = ""
@@ -321,6 +312,8 @@ def main() -> None:
         st.session_state.last_b2 = ""
     if "last_c2" not in st.session_state:
         st.session_state.last_c2 = ""
+    if "last_d2" not in st.session_state:
+        st.session_state.last_d2 = ""
     if "flash_start_time" not in st.session_state:
         st.session_state.flash_start_time = None
     if "flash_done" not in st.session_state:
@@ -350,18 +343,23 @@ def main() -> None:
 
     current_b2 = get_b2_value(df)
     current_c2 = get_c2_value(df)
+    current_d2 = get_d2_value(df)
 
     b2_is_one = current_b2 in ("1", "1.0")
     c2_is_one = current_c2 in ("1", "1.0")
 
-    if not c2_is_one:
-        st.session_state.flash_start_time = None
-        st.session_state.flash_done = False
-    elif not st.session_state.flash_done and st.session_state.flash_start_time is None:
+    # D2 체크박스가 이전과 달라졌는지
+    trigger_changed = current_d2 != st.session_state.last_d2
+
+    # 새 문구이거나, 같은 문구라도 D2가 바뀌면 다시 알림 실행
+    should_trigger = changed or trigger_changed
+
+    # 점멸 시작
+    if should_trigger and c2_is_one:
         st.session_state.flash_start_time = time.time()
+        st.session_state.flash_done = False
 
-    st.session_state.last_c2 = current_c2
-
+    # 점멸 종료 처리 (15초 후 종료)
     flash_start = st.session_state.flash_start_time
     elapsed = (time.time() - flash_start) if flash_start else 999
 
@@ -369,23 +367,25 @@ def main() -> None:
         st.session_state.flash_start_time = None
         st.session_state.flash_done = True
 
-    flash_on = c2_is_one and st.session_state.flash_start_time is not None
+    flash_on = st.session_state.flash_start_time is not None
     flash_elapsed = min(elapsed, 15.0) if flash_on else 0.0
 
+    # 화면은 항상 최신 데이터로 렌더링
+    with placeholder:
+        render_board(df, flash=flash_on, flash_elapsed=flash_elapsed)
+
+    # 소리 시작
+    if should_trigger and b2_is_one:
+        st.session_state.sound_trigger = str(time.time())
+
+    # 상태 저장
     if changed:
         st.session_state.last_hash = current_hash
         st.session_state.last_update_ts = time.time()
 
-    with placeholder:
-        render_board(df, flash=flash_on, flash_elapsed=flash_elapsed)
-
-    last_b2_is_one = st.session_state.last_b2 in ("1", "1.0")
-
-    if b2_is_one and not last_b2_is_one:
-        st.session_state.sound_trigger = str(time.time())
-        st.session_state.last_b2 = "1"
-    else:
-        st.session_state.last_b2 = current_b2
+    st.session_state.last_b2 = current_b2
+    st.session_state.last_c2 = current_c2
+    st.session_state.last_d2 = current_d2
 
     render_sound_component(
         st.session_state.get("sound_trigger", ""),
