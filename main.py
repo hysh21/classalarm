@@ -25,7 +25,7 @@ def load_ding_base64() -> str:
 
 def render_sound_component(trigger: str, ding_b64: str = "") -> None:
     """
-    trigger 값이 바뀌면 new Audio().play() 실행.
+    trigger 값이 바뀌면 소리를 재생.
     브라우저 자동재생 제한으로 처음 1회 클릭이 필요할 수 있음.
     """
     b64 = ding_b64 or load_ding_base64()
@@ -34,27 +34,38 @@ def render_sound_component(trigger: str, ding_b64: str = "") -> None:
         return
 
     trigger_esc = trigger.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"')
+
     html = f"""
     <audio id="dingAudio" preload="auto" style="display:none">
         <source src="data:audio/wav;base64,{b64}" type="audio/wav">
     </audio>
+
     <script>
     (function() {{
-        var trigger = "{trigger_esc}";
+        const trigger = "{trigger_esc}";
         if (!trigger) return;
 
-        var el = document.getElementById("dingAudio");
-        var dataUrl = el && el.querySelector("source") ? el.querySelector("source").src : "";
-        if (!dataUrl) return;
+        const audio = document.getElementById("dingAudio");
+        if (!audio) return;
 
-        var audio = new Audio(dataUrl);
-        audio.play().catch(function(e) {{
-            console.log("소리 재생 실패:", e);
-        }});
+        try {{
+            audio.pause();
+            audio.currentTime = 0;
+            audio.load();
+
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {{
+                playPromise.catch(function(err) {{
+                    console.log("소리 재생 실패:", err);
+                }});
+            }}
+        }} catch (err) {{
+            console.log("오디오 처리 실패:", err);
+        }}
     }})();
     </script>
     """
-    components.html(html, height=0)
+    components.html(html, height=1)
 
 
 @st.cache_data(ttl=20)
@@ -298,7 +309,7 @@ def main() -> None:
     now_kst = datetime.now(kst)
     hour = now_kst.hour
 
-    # 실제 데이터 갱신은 20초 캐시 기준
+    # 앱 실행 주기
     if 7 <= hour < 17:
         refresh_interval = 5
     else:
@@ -308,10 +319,6 @@ def main() -> None:
         st.session_state.last_hash = ""
     if "last_update_ts" not in st.session_state:
         st.session_state.last_update_ts = 0.0
-    if "last_b2" not in st.session_state:
-        st.session_state.last_b2 = ""
-    if "last_c2" not in st.session_state:
-        st.session_state.last_c2 = ""
     if "last_d2" not in st.session_state:
         st.session_state.last_d2 = ""
     if "flash_start_time" not in st.session_state:
@@ -348,18 +355,13 @@ def main() -> None:
     b2_is_one = current_b2 in ("1", "1.0")
     c2_is_one = current_c2 in ("1", "1.0")
 
-    # D2 체크박스가 이전과 달라졌는지
     trigger_changed = current_d2 != st.session_state.last_d2
-
-    # 새 문구이거나, 같은 문구라도 D2가 바뀌면 다시 알림 실행
     should_trigger = changed or trigger_changed
 
-    # 점멸 시작
     if should_trigger and c2_is_one:
         st.session_state.flash_start_time = time.time()
         st.session_state.flash_done = False
 
-    # 점멸 종료 처리 (15초 후 종료)
     flash_start = st.session_state.flash_start_time
     elapsed = (time.time() - flash_start) if flash_start else 999
 
@@ -370,21 +372,16 @@ def main() -> None:
     flash_on = st.session_state.flash_start_time is not None
     flash_elapsed = min(elapsed, 15.0) if flash_on else 0.0
 
-    # 화면은 항상 최신 데이터로 렌더링
     with placeholder:
         render_board(df, flash=flash_on, flash_elapsed=flash_elapsed)
 
-    # 소리 시작
     if should_trigger and b2_is_one:
         st.session_state.sound_trigger = str(time.time())
 
-    # 상태 저장
     if changed:
         st.session_state.last_hash = current_hash
         st.session_state.last_update_ts = time.time()
 
-    st.session_state.last_b2 = current_b2
-    st.session_state.last_c2 = current_c2
     st.session_state.last_d2 = current_d2
 
     render_sound_component(
